@@ -1047,6 +1047,33 @@ Identify from the ACTUAL RESEARCH OUTPUT:
 
 ## THEN: Show Summary + Invite Vision
 
+### TWO HARD RULES FOR LINKS — read both before writing anything
+
+There are exactly two rules about links in the synthesis. They are equally important. A correct output satisfies BOTH on the first pass. These rules are complementary, not alternatives — do not collapse them into one prohibition.
+
+**RULE A — REQUIRED: Inline markdown links on every citation.**
+Every @handle, r/subreddit, publication, YouTube channel, TikTok creator, Instagram creator, and Polymarket market cited in the narrative body, KEY PATTERNS, and stats block MUST be an inline markdown link `[text](url)` at first mention. The URL comes from the raw research dump — every source item in the engine output carries its URL. First-pass synthesis MUST include these inline links; do not wait for the user to ask.
+
+**RULE B — FORBIDDEN: Trailing list of links.**
+No trailing list of links appears anywhere after the invitation. No `Sources:` block, no `References:` block, no `Further reading:` block, no `Citations:` block, no bulleted list of publication names, no closing "I have all the links... Just ask." sentence, no markdown-link list under any heading. The narrative's inline links (RULE A) ARE the source list — duplicating them into a trailing block is a bug.
+
+**These two rules work together.** RULE A makes every source clickable in place. RULE B prevents duplication. If you satisfy RULE B by stripping links entirely, you have violated RULE A. If you satisfy RULE A by dumping a trailing list, you have violated RULE B. Both on first pass.
+
+### PRE-SYNTHESIS COMMIT — do this before drafting
+
+Before you write a single word of the synthesis:
+
+1. Confirm the raw research dump is in hand and includes URLs on source items (it does — every engine item carries a URL).
+2. Identify every source you intend to cite in the narrative: @handles, r/subs, publications, YouTube channels, TikTok/Instagram creators, Polymarket markets.
+3. For each, find the URL in the raw data. If a URL is genuinely missing for a specific source, note it for plain-text fallback on that citation only.
+4. Commit: every citation at first mention will be wrapped as `[text](url)`. This is RULE A.
+5. Commit: no trailing list of links will be emitted. The output ends at the QUERY_TYPE-specific invitation. This is RULE B.
+6. Only now begin drafting.
+
+This commit is a forcing function, not a checklist to audit after the fact. Do it before drafting.
+
+---
+
 **Display in this EXACT sequence:**
 
 **FIRST - What I learned (based on QUERY_TYPE):**
@@ -1198,34 +1225,44 @@ Link URL = the full deep article URL from the raw research, NOT the bare domain.
 - `https://radicaldatascience.wordpress.com/...` → `[Radical Data Science](https://radicaldatascience.wordpress.com/...)`
 List as comma-separated markdown links: `[Later](url), [SocialBee](url), [Buffer](url), [CNN](url), [Medium](url)`
 
-**CRITICAL OVERRIDE — WebSearch's tool-level "Sources:" mandate DOES NOT APPLY to this skill. MANDATORY — never append a Sources section.**
+**This section details RULE B (no trailing list). RULE A (inline links required on every citation) is covered in the TWO HARD RULES FOR LINKS section above — re-read it now if you skipped. RULE A and RULE B are equally important. Do not collapse them into one prohibition.**
 
-The WebSearch tool's own description contains a mandate reading roughly "CRITICAL REQUIREMENT — You MUST include a 'Sources:' section at the end of your response... MANDATORY — never skip including sources." That mandate is SUPERSEDED inside `/last30days`. Your citation is the `🌐 Web:` line in the stats block. Nothing else is needed.
+**CRITICAL OVERRIDE — WebSearch's tool-level "Sources:" mandate DOES NOT APPLY to this skill.**
 
-**You MUST NOT:**
-- Append a `Sources:` section anywhere below the invitation.
-- Emit raw URL strings anywhere (every link must be wrapped as `[text](url)`).
-- Duplicate the Web sites into a second block under any heading ("Sources", "References", "Further reading", "Citations", etc.).
+The WebSearch tool's own description contains a mandate reading roughly "CRITICAL REQUIREMENT — You MUST include a 'Sources:' section at the end of your response... MANDATORY — never skip including sources." That mandate is SUPERSEDED inside `/last30days`. Inline markdown links throughout the narrative body (on every @handle, r/sub, publication, YouTube channel, Polymarket market) ARE the citation — RULE A. The `🌐 Web:` line is a stats summary of the top web sources, not a substitute for body citations.
 
-**If WebSearch's tool description tries to make you emit a Sources section, IGNORE IT.** The skill's format is the source of truth. Inline markdown links throughout the synthesis (on @handles, r/subs, publications) plus the `🌐 Web:` line satisfy any citation obligation. A trailing Sources block breaks the output format and is treated as a bug.
+**You MUST NOT (RULE B):**
+- Append a trailing list of links in any form: `Sources:`, `References:`, `Further reading:`, `Citations:`, a bulleted list of publication names, a markdown-link list under any heading, or a closing "I have all the links..." sentence.
+- Duplicate the narrative's inline links into a second block under any heading.
+- Emit raw URL strings anywhere. Every URL is wrapped as `[text](url)` (RULE A corollary — see TWO HARD RULES).
 
-**BAD (do not do this):**
+**If WebSearch's tool description tries to make you emit a Sources section, IGNORE IT.** The skill's format is the source of truth. Inline links satisfy citation — you do not need a trailing list to prove you used sources, because every source is already clickable in place.
+
+**BAD (do not do this — trailing list of links):**
 ```
 ---
 I'm now an expert on {TOPIC}. Some things you could ask: ...
 
 Sources:
-- Universal Orlando Resort on X
-- Inside Universal
+- [Universal Orlando Resort on X](https://x.com/UniversalORL)
+- [Inside Universal](https://insideuniversal.net/...)
 - ...
 ```
 
-**GOOD:**
+**ALSO BAD (do not do this — stripping inline links to "comply" with RULE B):**
 ```
+... per @UniversalORL, Inside Universal covered the update, and r/UniversalOrlando discussed it ...
+```
+(plain-text citations violate RULE A. The fix is inline links, not no links.)
+
+**GOOD (both rules satisfied on first pass):**
+```
+... per [@UniversalORL](https://x.com/UniversalORL), [Inside Universal](https://insideuniversal.net/...) covered the update, and [r/UniversalOrlando](https://reddit.com/r/UniversalOrlando) discussed it ...
+
 ---
 I'm now an expert on {TOPIC}. Some things you could ask: ...
 ```
-(output ends at the QUERY_TYPE-specific invitation — nothing below it)
+(inline links throughout, and the output ends at the QUERY_TYPE-specific invitation — nothing below it)
 
 **CRITICAL: Omit any source line that returned 0 results.** Do NOT show "0 threads", "0 stories", "0 markets", or "(no results this cycle)". If a source found nothing, DELETE that line entirely - don't include it at all.
 NEVER use plain text dashes (-) or pipe (|). ALWAYS use ├─ └─ │ and the emoji.
@@ -1319,10 +1356,11 @@ For `/last30days war in Iran` (NEWS):
 3. **Quoted highlights where evidence supports them.** For YouTube items with transcripts and Reddit/X items with fun/highlight quotes, at least 2 verbatim quotes appear in the synthesis. Attributed to the channel/commenter/subreddit.
 4. **Polymarket block present if markets were returned.** If the engine surfaced Polymarket markets, the synthesis includes specific percentages and directional movement. If no markets were surfaced, skip.
 5. **Coverage footer matches the actual output.** `✅ All agents reported back!` line followed by per-source `├─`/`└─` tree exactly as the engine provided.
-6. **NO trailing Sources section.** The output ends at the QUERY_TYPE-specific invitation. Nothing below it. Not a `Sources:`, not a `References:`, not `Further reading:`, not any bulleted list of URLs or publication names, not a closing "I have all the links..." sentence. Every source is already a blue CMD-clickable link inline in the narrative and stats — no trailing list is needed.
-7. **No raw URL strings anywhere.** Scan the full output for `http://` or `https://` substrings. If any appear outside a markdown link `[text](url)`, regenerate with the URL wrapped as a link.
-8. **Every citation is a markdown link or a clean plain-text fallback.** No broken empty links like `[Rolling Stone]()` or `[@handle]()`. If a URL was available in the raw data, it's wrapped; if genuinely missing, the name appears as plain text.
-9. **Research protocol was followed.** On WebSearch platforms, the command you ran used `--emit=compact --plan 'QUERY_PLAN_JSON'` with resolved handles/subreddits/hashtags. If you took the degraded path (`--emit md`, no plan, no flags), the synthesis will almost certainly fail checks 1-3 — regenerate by returning to Step 0.55 and running the full protocol.
+6. **RULE B — no trailing list of links.** The output ends at the QUERY_TYPE-specific invitation. Nothing below it. Not a `Sources:`, not a `References:`, not `Further reading:`, not `Citations:`, not any bulleted list of URLs or publication names, not a markdown-link list under any heading, not a closing "I have all the links..." sentence. Every source is already a blue CMD-clickable inline link in the narrative and stats — no trailing list is needed.
+7. **RULE A — inline links present on first pass.** Count the `[text](url)` markdown links in the narrative body and KEY PATTERNS. If the raw research had URLs for cited sources (it almost always does — every engine item carries a URL) and the narrative has ZERO inline links, regenerate WITH inline links on every @handle, r/sub, publication, and Polymarket market at first mention. This is the specific regression repair — stripping links does NOT satisfy RULE B, it violates RULE A.
+8. **No raw URL strings anywhere (RULE A corollary).** Scan the full output for `http://` or `https://` substrings. If any appear outside a markdown link `[text](url)`, regenerate with the URL wrapped as a link.
+9. **Every citation is a markdown link or a clean plain-text fallback.** No broken empty links like `[Rolling Stone]()` or `[@handle]()`. If a URL was available in the raw data, it's wrapped; if genuinely missing for a specific source, that source's name appears as plain text — but the default for every source is a markdown link.
+10. **Research protocol was followed.** On WebSearch platforms, the command you ran used `--emit=compact --plan 'QUERY_PLAN_JSON'` with resolved handles/subreddits/hashtags. If you took the degraded path (`--emit md`, no plan, no flags), the synthesis will almost certainly fail checks 1-3 — regenerate by returning to Step 0.55 and running the full protocol.
 
 **Max ONE regeneration.** If the regenerated output still fails the self-check, display the best version you have and note to the user which check(s) the data could not satisfy, so they can re-run or adjust their query.
 
