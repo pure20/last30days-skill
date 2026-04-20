@@ -2,6 +2,12 @@ The AI world reinvents itself every month. This skill keeps you current.
 
 `/last30days` researches your topic across Reddit, X, YouTube, TikTok, Instagram, Hacker News, Polymarket, GitHub, and 5+ more sources from the last 30 days, finds what the community is actually upvoting, sharing, betting on, and saying on camera, and writes you a grounded narrative with real citations.
 
+## 2026-04-20 — Clickable source links
+
+Every cited source in the synthesis (X handles, subreddits, publications, YouTube channels, Polymarket markets) now renders as a blue CMD-clickable markdown link in the terminal. No raw URL strings — just clean link text you can click straight through to the source. Works in Claude Code on any terminal that supports OSC 8 hyperlinks (Ghostty, iTerm, Warp, others).
+
+Credit to [@jay_k](https://x.com/jay_k) for surfacing the missing link-back in the reply thread, and to [@photomatt](https://x.com/photomatt) for confirming CMD-click works in Claude Code — that was the nudge to flip the rule.
+
 ## v3 is the intelligent search release
 
 v3 is a ground-up engine rewrite by [@j-sperling](https://github.com/j-sperling). The old engine searched keywords. The new engine understands your topic first, then searches the right people and communities.
