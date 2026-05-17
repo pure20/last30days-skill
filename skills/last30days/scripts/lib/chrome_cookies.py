@@ -285,19 +285,24 @@ def _find_brave_cookies_db() -> Optional[Path]:
     """Find Brave's Cookies database on macOS.
 
     Tries the Default profile first, then scans numbered Profile directories
-    in creation order. Brave creates extra profiles as "Profile 1", "Profile 2",
-    etc. alongside Default.
+    by most-recently-modified. Brave creates extra profiles as "Profile 1",
+    "Profile 2", etc. alongside Default; the most recently used one is the
+    likeliest to hold current cookies. Lexicographic sort would visit
+    "Profile 10" before "Profile 2", which can return the wrong profile.
     """
     default = BRAVE_BASE_DIR / "Default" / "Cookies"
     if default.exists():
         return default
 
     try:
-        for child in sorted(BRAVE_BASE_DIR.iterdir()):
-            if child.is_dir() and child.name.startswith("Profile "):
-                candidate = child / "Cookies"
-                if candidate.exists():
-                    return candidate
+        candidates = [
+            child for child in BRAVE_BASE_DIR.iterdir()
+            if child.is_dir() and child.name.startswith("Profile ")
+        ]
+        for child in sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True):
+            candidate = child / "Cookies"
+            if candidate.exists():
+                return candidate
     except OSError:
         pass
 
