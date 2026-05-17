@@ -881,15 +881,15 @@ def main() -> int:
         pass
 
     fun_level = config.get("FUN_LEVEL", "medium").lower()
+    # Comparison HTML is the one case where the saved file's title and content
+    # have to be overridden away from the leading entity's report. Compute the
+    # gate once so the footer-display and save-output paths can't disagree.
+    is_comparison_html = bool(entity_reports) and args.emit == "html"
     footer_save_path = None
     if args.save_dir:
-        save_topic = (
-            comparison_topic(entity_reports)
-            if entity_reports and args.emit == "html"
-            else report.topic
-        )
+        save_topic_for_display = comparison_topic(entity_reports) if is_comparison_html else report.topic
         footer_save_path = compute_save_path_display(
-            args.save_dir, save_topic, args.save_suffix or "", args.emit
+            args.save_dir, save_topic_for_display, args.save_suffix or "", args.emit
         )
 
     # Signal to render_compact whether pre-research flags were supplied.
@@ -924,19 +924,14 @@ def main() -> int:
         )
     if args.save_dir:
         # Save the main topic's raw file (single-entity or comparison main).
-        save_topic = (
-            comparison_topic(entity_reports)
-            if entity_reports and args.emit == "html"
-            else None
-        )
         save_path = save_output(
             report,
             args.emit,
             args.save_dir,
             suffix=args.save_suffix or "",
             synthesis_md=synthesis_md,
-            topic_override=save_topic,
-            rendered_content=rendered if entity_reports and args.emit == "html" else None,
+            topic_override=comparison_topic(entity_reports) if is_comparison_html else None,
+            rendered_content=rendered if is_comparison_html else None,
         )
         sys.stderr.write(f"[last30days] Saved output to {save_path}\n")
         # Competitor / vs-mode: also save a per-entity raw file for each peer.
