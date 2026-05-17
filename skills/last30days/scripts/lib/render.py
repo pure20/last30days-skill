@@ -4,18 +4,11 @@ from __future__ import annotations
 
 import json
 import pathlib
-import re
 from collections import Counter
 from datetime import date
 from urllib.parse import urlparse
 
-from . import dates, schema
-
-
-_VERSION_RE = re.compile(
-    r'''^version:\s*(?:"([^"]+)"|'([^']+)'|(\S+))\s*$''',
-    re.MULTILINE,
-)
+from . import dates, schema, skill_meta
 
 
 def _skill_version() -> str:
@@ -25,11 +18,12 @@ def _skill_version() -> str:
     Hermes, etc.) do not always carry `.claude-plugin/plugin.json` — that file ships with
     plugin-cache installs but not with per-harness skill installs. SKILL.md frontmatter is
     the fallback that keeps the badge from emitting v? on those installs. Returns "?" only
-    if both sources are missing.
+    if no usable version string is found from either source (missing files, corrupt JSON,
+    or SKILL.md without a version line).
 
     A corrupt manifest at one ancestor does not shadow a valid manifest at a deeper one
-    (continue, not break). YAML frontmatter accepts double-quoted, single-quoted, or
-    unquoted version scalars.
+    (continue, not break). SKILL.md parsing accepts double-quoted, single-quoted, or
+    unquoted YAML version scalars (delegated to skill_meta.read_skill_version).
     """
     here = pathlib.Path(__file__).resolve()
     for parent in here.parents:
@@ -43,16 +37,11 @@ def _skill_version() -> str:
                 return version
 
     # No usable manifest found at any ancestor — fall back to SKILL.md frontmatter.
+    # First SKILL.md found in the walk is THIS skill's; never traverse past it.
     for parent in here.parents:
         skill_md = parent / "SKILL.md"
         if skill_md.is_file():
-            try:
-                match = _VERSION_RE.search(skill_md.read_text())
-            except (OSError, UnicodeDecodeError):
-                break
-            if match:
-                return next(g for g in match.groups() if g is not None)
-            break
+            return skill_meta.read_skill_version(skill_md) or "?"
     return "?"
 
 

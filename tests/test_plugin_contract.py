@@ -1,5 +1,5 @@
 import json
-import re
+import sys
 import tomllib
 import unittest
 from pathlib import Path
@@ -8,17 +8,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SKILL_ROOT = ROOT / "skills" / "last30days"
 
+sys.path.insert(0, str(SKILL_ROOT / "scripts"))
+from lib.skill_meta import read_skill_version  # noqa: E402
+
 
 def _json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _skill_version() -> str:
-    text = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
-    match = re.search(r'^version:\s*"([^"]+)"\s*$', text, re.MULTILINE)
-    if not match:
+    version = read_skill_version(SKILL_ROOT / "SKILL.md")
+    if not version:
         raise AssertionError("SKILL.md version frontmatter not found")
-    return match.group(1)
+    return version
 
 
 class TestPluginContract(unittest.TestCase):

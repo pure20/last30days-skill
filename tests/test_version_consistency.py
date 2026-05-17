@@ -1,4 +1,5 @@
 import re
+import sys
 import unittest
 from pathlib import Path
 
@@ -6,16 +7,31 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SKILL_ROOT = ROOT / "skills" / "last30days"
 
+sys.path.insert(0, str(SKILL_ROOT / "scripts"))
+from lib.skill_meta import read_skill_version  # noqa: E402
+
 
 def _skill_version() -> str:
-    text = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
-    match = re.search(r'^version:\s*"([^"]+)"\s*$', text, re.MULTILINE)
-    if not match:
+    version = read_skill_version(SKILL_ROOT / "SKILL.md")
+    if not version:
         raise AssertionError("SKILL.md version frontmatter not found")
-    return match.group(1)
+    return version
 
 
 class TestVersionConsistency(unittest.TestCase):
+    def test_skill_md_uses_double_quoted_version(self) -> None:
+        # The shared VERSION_RE in skill_meta.py accepts double-quoted,
+        # single-quoted, and unquoted YAML version scalars. This repo's
+        # SKILL.md must use the double-quoted form so the badge string stays
+        # deterministic and contributors don't accidentally introduce a
+        # quoting style that's harder for downstream tooling to parse.
+        text = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        self.assertRegex(
+            text,
+            re.compile(r'^version:\s*"[^"]+"\s*$', re.MULTILINE),
+            msg="SKILL.md frontmatter version must use double-quoted form",
+        )
+
     def test_root_skill_header_matches_frontmatter_version(self) -> None:
         text = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
         version = _skill_version()
