@@ -112,8 +112,9 @@ def available_sources(config: dict[str, Any], requested_sources: list[str] | Non
     if which("yt-dlp") or env.is_youtube_sc_available(config):
         available.append("youtube")
     available.extend(["hackernews", "polymarket"])
-    if config.get("GITHUB_TOKEN") or which("gh"):
-        available.append("github")
+    # GitHub is reachable via the unauthenticated REST tier too, so it is
+    # available even without a token/gh CLI (a token only raises rate limits).
+    available.append("github")
     if which("digg-pp-cli"):
         available.append("digg")
     if env.is_bluesky_available(config):
@@ -1164,6 +1165,10 @@ def _retrieve_stream(
         token = github.resolve_token(config.get("GITHUB_TOKEN"))
         response = github.search_github(subquery.search_query, from_date, to_date, depth=depth, token=token)
         items = github.parse_github_response(response)
+        if not items and response.get("error"):
+            # Surface unauth rate-limit (or other hard failure) so the run
+            # records it as degraded/failed instead of silently showing zero.
+            raise RuntimeError(response["error"])
         items = github.enrich_with_comments(items, depth=depth, token=token)
         return items, {}
     if source == "pinterest":
