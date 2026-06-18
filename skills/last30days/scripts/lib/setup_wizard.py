@@ -171,7 +171,10 @@ def _digg_off_path_binary() -> Optional[str]:
 
 def _digg_bin_dir_hint(digg_path: str) -> str:
     """Return a copy-pasteable PATH directory for the given binary path."""
-    parent = str(Path(digg_path).expanduser().parent)
+    parent = os.path.dirname(os.path.expanduser(digg_path))
+    if os.name == "nt":
+        # Windows PATH edits use absolute dirs; $HOME is a Unix shell convention.
+        return parent
     home = str(Path.home())
     if parent == home:
         return "$HOME"

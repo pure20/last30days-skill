@@ -560,6 +560,29 @@ class TestGetSetupStatusText:
         assert "$HOME/go/bin" in text
         assert ".local/bin" not in text
 
+    def test_status_text_digg_installed_off_path_missing_path(self):
+        results = {"cookies_found": {}, "ytdlp_action": "already_installed",
+                   "digg_action": "installed_off_path",
+                   "env_written": False}
+        text = setup_wizard.get_setup_status_text(results)
+        assert "not on PATH" in text
+        assert "add its install directory to PATH" in text
+
+    def test_status_text_digg_installed_off_path_empty_path(self):
+        results = {"cookies_found": {}, "ytdlp_action": "already_installed",
+                   "digg_action": "installed_off_path",
+                   "digg_path": "",
+                   "env_written": False}
+        text = setup_wizard.get_setup_status_text(results)
+        assert "add its install directory to PATH" in text
+
+    def test_digg_bin_dir_hint_windows_returns_absolute_parent(self):
+        home = Path.home()
+        digg_path = str(home / ".local" / "bin" / "digg-pp-cli")
+        expected = str(home / ".local" / "bin")
+        with patch.object(setup_wizard.os, "name", "nt"):
+            assert setup_wizard._digg_bin_dir_hint(digg_path) == expected
+
     def test_status_text_digg_no_npx(self):
         results = {"cookies_found": {}, "ytdlp_action": "already_installed",
                    "digg_action": "no_npx", "env_written": False}
