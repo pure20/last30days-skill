@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.1] - 2026-06-20
+
+### Added
+
+- **ScrapeCreators transcript fallback.** When `SCRAPECREATORS_API_KEY` is set, YouTube transcripts fall back to the ScrapeCreators transcript endpoint after the keyless yt-dlp cascade fails (fetched server-side, so no 429 / cookies / PO tokens). yt-dlp stays primary and a credit is only spent on a genuine failure, never on success and never on a video proven to have no captions. With a key, yt-dlp also fails over fast (one short-timeout attempt) so a 429 hands off to ScrapeCreators in roughly 17s instead of roughly 90s. (#637, idea from #595)
+- **YouTube comments default-on.** Comment enrichment now activates whenever a ScrapeCreators key is present (bounded to the top ~3 videos by engagement, ~3 credits per run) instead of requiring `INCLUDE_SOURCES=youtube_comments`. Suppress with `EXCLUDE_SOURCES=youtube_comments`. TikTok/Instagram comments remain `INCLUDE_SOURCES` opt-ins. (#637)
+
+### Fixed
+
+- **Salvage partial YouTube transcripts on non-zero yt-dlp exit.** With the default `en,es,pt` languages an English video wrote `en.vtt` then 429'd on `es`/`pt`, and the already-written transcript was discarded and retried back into the rate limit. Any VTT on disk is now read before the failure is classified, which fixes the dominant `0/N transcripts` case. (#636)
+- **Windows transcript crash on subprocess timeout.** Guarded the SIGKILL escalation path in `run_with_timeout` against `os.killpg` / `os.getpgid` raising `AttributeError` on Windows (they are POSIX-only), mirroring the primary path's guard. (#638, reported in #588)
+
 ## [3.6.0] - 2026-06-18
 
 ### Added
