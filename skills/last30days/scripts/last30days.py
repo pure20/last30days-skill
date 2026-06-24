@@ -634,8 +634,8 @@ def _propagate_config_to_environ(config: dict[str, object]) -> None:
             os.environ[key] = val
 
 
-def _setup_allows_browser_cookies(extra_argv: list[str]) -> bool:
-    return "--allow-browser-cookies" in extra_argv
+def _setup_allows_browser_cookies(args: argparse.Namespace, extra_argv: list[str]) -> bool:
+    return not args.no_browser_cookies and "--allow-browser-cookies" in extra_argv
 
 
 def _config_policy_for_args(args: argparse.Namespace, topic: str, extra_argv: list[str]) -> env.ConfigLoadPolicy:
@@ -644,7 +644,7 @@ def _config_policy_for_args(args: argparse.Namespace, topic: str, extra_argv: li
     elif args.diagnose:
         browser_mode = "plan_only"
     elif topic.lower() == "setup":
-        browser_mode = "read" if _setup_allows_browser_cookies(extra_argv) else "off"
+        browser_mode = "read" if _setup_allows_browser_cookies(args, extra_argv) else "off"
     else:
         browser_mode = "read"
     return env.ConfigLoadPolicy(browser_cookies=browser_mode)
@@ -704,15 +704,15 @@ def main() -> int:
         sys.stderr.write("Running auto-setup...\n")
         results = setup_wizard.run_auto_setup(
             config,
-            allow_browser_cookies=_setup_allows_browser_cookies(extra_argv),
+            allow_browser_cookies=_setup_allows_browser_cookies(args, extra_argv),
         )
         # Persist FROM_BROWSER only when every service's cookies came from the
         # SAME single browser — then we can fast-path future runs to it. If
         # different services matched different browsers, or none matched, leave
-        # FROM_BROWSER unset: the safe default (Firefox/Safari) then covers all
-        # of them with no Keychain prompt. We deliberately do NOT pin "auto"
-        # here (it would re-probe Chrome and re-trigger the prompt) nor a single
-        # browser (it would silently skip the service that used the other one).
+        # FROM_BROWSER unset so the safe default remains no browser-cookie
+        # reads. We deliberately do NOT pin "auto" here (it would re-probe
+        # Chrome and re-trigger the prompt) nor a single browser (it would
+        # silently skip the service that used the other one).
         found_browsers = set(results.get("cookies_found", {}).values())
         from_browser = found_browsers.pop() if len(found_browsers) == 1 else None
         setup_wizard.write_setup_config(env.CONFIG_FILE, from_browser=from_browser)
