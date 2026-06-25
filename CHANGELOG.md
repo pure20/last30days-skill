@@ -64,6 +64,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The X FROM lane (the subject's own timeline) now pulls up to 8 posts per handle (was 3); the about/related lanes stay modest.
 
+### Fixed
+
+- Secrets `.env` and its parent config directory are now auto-tightened to `0o600`/`0o700` after creation, and `check-config.sh`'s `check_perms` now auto-fixes loose permissions with `chmod 600` instead of warning only ([#573](https://github.com/mvanhorn/last30days-skill/issues/573))
+
 ## [3.5.0] - 2026-06-18
 
 ### Added
