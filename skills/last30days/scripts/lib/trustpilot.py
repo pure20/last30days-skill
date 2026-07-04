@@ -15,12 +15,24 @@ Default-on safety (three gates):
      company/brand -- a domain-like token, or a short (<=2-word) capitalized
      proper noun. Generic phrases ("AI coding agents", "agent memory") and
      longer multi-word phrases never call the CLI, so Trustpilot stays quiet --
-     and never harvests Chrome -- on non-company topics.
+     and never harvests Chrome -- on non-company topics. An explicit resolved
+     domain (``--trustpilot-domain`` or an auto-resolve hint) bypasses this
+     gate: an explicit domain is proof of brand intent.
   2. Browser opt-out. Automated contexts (cron, CI, the eval harness) can set
      ``LAST30DAYS_TRUSTPILOT_NO_BROWSER`` to disable the source entirely, so a
      headless run never spawns the cookie harvest.
   3. Graceful degradation. Any CLI failure (no Chrome, expired cookie that
      cannot re-harvest, timeout) degrades to empty results, never an error.
+
+Domain resolution: Trustpilot review pages are keyed by domain
+(``www.thriftbooks.com``), not company name -- ``info ThriftBooks`` 404s.
+Priority chain: user flag (verbatim) > auto-resolve hint (retries via search
+on a miss) > domain token in the topic > CLI ``search`` name->domain lookup
+(cached per topic) > cleaned topic (legacy behavior).
+
+Session pre-flight: ``ensure_session_ready`` performs one serialized
+``auth status`` / ``auth login`` before the parallel fan-out so concurrent
+streams and vs-mode sub-runs never race their own Chrome harvests.
 """
 
 from __future__ import annotations
@@ -29,6 +41,7 @@ import json
 import os
 import re
 import shutil
+import threading
 from typing import Any, Dict, List, Optional
 
 from . import dates, log, subproc
@@ -39,7 +52,15 @@ CLI_BIN = "trustpilot-pp-cli"
 
 SEARCH_TIMEOUT = 75  # generous: a cold run may harvest a WAF cookie (~10s).
 
+AUTH_STATUS_TIMEOUT = 20  # auth status is a local SQLite read; fast.
+
 NO_BROWSER_ENV = "LAST30DAYS_TRUSTPILOT_NO_BROWSER"
+
+# Among name-matching search hits, the top hit must have this many times the
+# runner-up's review volume to win automatically. Lookalike/squatter pages have
+# tiny volume (ThriftBooks: 2.8M vs 130); comparable volume means genuine
+# ambiguity, where falling back beats silently picking the wrong company.
+DOMAIN_DOMINANCE_FACTOR = 50
 
 # Domain-like token, e.g. "chownow.com", "nothing.tech".
 _DOMAIN_RE = re.compile(r"\b[a-z0-9][a-z0-9-]*\.(com|io|co|net|org|app|ai|dev|gg|tech|shop|store)\b")
@@ -132,6 +153,170 @@ def _build_info_args(identifier: str) -> List[str]:
     return [CLI_BIN, "info", identifier, "--agent"]
 
 
+def _normalize_name(text: str) -> str:
+    """Case/whitespace/punctuation-insensitive brand-name key."""
+    return re.sub(r"[^a-z0-9]", "", (text or "").lower())
+
+
+# name->domain results, keyed by normalized topic. Per-topic (NOT a single
+# process-wide slot): vs-mode resolves several entities in one process, and a
+# single slot would serve entity A's domain to entity B.
+_domain_cache: Dict[str, Optional[str]] = {}
+_domain_cache_lock = threading.Lock()
+
+_warmup_lock = threading.Lock()
+_warmup_done = False
+
+
+def _reset_state_for_tests() -> None:
+    """Clear module-level caches/flags (tests only)."""
+    global _warmup_done
+    with _domain_cache_lock:
+        _domain_cache.clear()
+    _warmup_done = False
+
+
+def _select_search_hit(topic: str, hits: List[Any]) -> Optional[str]:
+    """Pick the canonical domain from search hits, or None when ambiguous.
+
+    Name-match is mandatory: review volume must never override a name
+    mismatch, or the engine attributes another company's reviews to the topic.
+    Among name-matching hits the winner must dominate on review volume
+    (DOMAIN_DOMINANCE_FACTOR); comparable volume is genuine ambiguity and
+    falls back to legacy behavior.
+    """
+    want = _normalize_name(topic)
+    if not want:
+        return None
+    matching: List[tuple[int, str]] = []
+    for hit in hits:
+        if not isinstance(hit, dict):
+            continue
+        domain = str(hit.get("domain") or hit.get("identifyingName") or "").strip()
+        name = str(hit.get("displayName") or hit.get("name") or "").strip()
+        if not domain or _normalize_name(name) != want:
+            continue
+        try:
+            count = int(hit.get("numberOfReviews") or 0)
+        except (TypeError, ValueError):
+            count = 0
+        matching.append((count, domain))
+    if not matching:
+        top = next(
+            (str(h.get("domain") or "").strip() for h in hits
+             if isinstance(h, dict) and h.get("domain")),
+            "",
+        )
+        if top:
+            _log(
+                f"no name-matching search hit; top candidate was '{top}' - "
+                f"pass --trustpilot-domain to target it"
+            )
+        return None
+    matching.sort(reverse=True)
+    if len(matching) == 1:
+        return matching[0][1]
+    top_count, top_domain = matching[0]
+    runner_count, runner_domain = matching[1]
+    if top_count >= max(1, runner_count) * DOMAIN_DOMINANCE_FACTOR:
+        return top_domain
+    _log(
+        f"ambiguous search hits ('{top_domain}' vs '{runner_domain}'); "
+        f"falling back - pass --trustpilot-domain to disambiguate"
+    )
+    return None
+
+
+def _search_domain(topic: str) -> Optional[str]:
+    """Resolve a company name to its Trustpilot domain via the CLI's search.
+
+    Cached per normalized topic (thread-safe), so repeat lookups cost one
+    subprocess while vs-mode entities still resolve independently. Returns
+    None (also cached) when the search errors or no hit meets the bar.
+    """
+    key = _normalize_name(topic)
+    if not key:
+        return None
+    with _domain_cache_lock:
+        if key in _domain_cache:
+            return _domain_cache[key]
+    data = _run_cli(
+        [CLI_BIN, "search", topic.strip(), "--limit", "5", "--agent"],
+        timeout=SEARCH_TIMEOUT,
+    )
+    domain: Optional[str] = None
+    if isinstance(data, dict) and "error" not in data:
+        hits = data.get("hits")
+        if isinstance(hits, list):
+            domain = _select_search_hit(topic, hits)
+    if domain:
+        _log(f"resolved '{topic}' -> '{domain}' via search")
+    with _domain_cache_lock:
+        _domain_cache[key] = domain
+    return domain
+
+
+def _is_session_fresh(status: Dict[str, Any]) -> bool:
+    """Read the freshness signal from an ``auth status --agent`` payload."""
+    if not isinstance(status, dict) or "error" in status:
+        return False
+    containers: List[Dict[str, Any]] = [status]
+    session = status.get("session")
+    if isinstance(session, dict):
+        containers.append(session)
+    for container in containers:
+        for key in ("isFresh", "fresh"):
+            if key in container:
+                return bool(container[key])
+    return False
+
+
+def ensure_session_ready(
+    topic: str,
+    config: Optional[Dict[str, Any]] = None,
+    has_domain: bool = False,
+) -> None:
+    """Warm the CLI's WAF session once per process, before the search fan-out.
+
+    Serialized behind a module lock so concurrent ``pipeline.run`` calls
+    (vs-mode fans out up to 6 sub-runs) never race their own Chrome harvests.
+    Skips entirely for topics the source would never fetch (brand-shape gate,
+    unless an explicit/resolved domain proves brand intent), so generic topics
+    never launch a browser. ``auth login`` fires only when ``auth status``
+    reports the session missing or stale -- login always harvests (~10s
+    Chrome), it has no freshness no-op. Logs only structured status strings;
+    the raw CLI payload carries live WAF-token prefixes and must never be
+    logged. Never raises.
+    """
+    global _warmup_done
+    if _warmup_done:
+        return
+    if not _is_available():
+        return
+    if not _harvest_allowed(config):
+        return
+    if not has_domain and not is_brand_shaped(topic):
+        return
+    with _warmup_lock:
+        if _warmup_done:
+            return
+        status = _run_cli(
+            [CLI_BIN, "auth", "status", "--agent"], timeout=AUTH_STATUS_TIMEOUT
+        )
+        if _is_session_fresh(status):
+            _log("warm-up: fresh")
+            _warmup_done = True
+            return
+        # Missing session exits non-zero (an error dict here): that is the
+        # "login needed" signal, not a warm-up failure.
+        login = _run_cli([CLI_BIN, "auth", "login", "--agent"], timeout=SEARCH_TIMEOUT)
+        if isinstance(login, dict) and "error" in login:
+            _log("warm-up failed: auth login did not complete")
+        else:
+            _log("warm-up: harvested")
+        _warmup_done = True
+
+
 def _run_cli(cmd: List[str], timeout: int) -> Dict[str, Any]:
     """Invoke trustpilot-pp-cli and parse the JSON object. Never raises."""
     if not _is_available():
@@ -171,23 +356,50 @@ def search_trustpilot(
     to_date: str,
     depth: str = "default",
     config: Optional[Dict[str, Any]] = None,
+    explicit_domain: Optional[str] = None,
+    domain_is_hint: bool = False,
 ) -> Dict[str, Any]:
     """Look up a company's Trustpilot sentiment, gated on a brand-shaped topic.
 
+    ``explicit_domain`` is used verbatim as the CLI identifier and bypasses
+    the brand-shape gate (an explicit domain is proof of brand intent). A
+    user-set domain is verbatim-final; a resolved hint
+    (``domain_is_hint=True``) retries via the CLI search when the lookup
+    misses, since auto-resolve can guess a plausible-but-wrong domain (the
+    official site is not always Trustpilot's canonical identifyingName).
+
+    Without an explicit domain, a bare company name resolves via the CLI's
+    ``search`` (cached per topic) before falling back to the cleaned topic.
+
     Returns ``{"results": [info_dict]}`` for a resolved company, or
-    ``{"results": []}`` when the topic is not brand-shaped, the browser opt-out
-    is set, or the CLI fails.
+    ``{"results": []}`` when the topic is not brand-shaped, the browser
+    opt-out is set, or the CLI fails.
     """
-    if not is_brand_shaped(topic):
+    explicit_domain = (explicit_domain or "").strip() or None
+    if not explicit_domain and not is_brand_shaped(topic):
         return {"results": []}
     if not _is_available():
         return {"results": [], "error": f"{CLI_BIN} not on PATH"}
     if not _harvest_allowed(config):
         _log("skipped: browser opt-out set")
         return {"results": []}
-    identifier = _company_identifier(topic)
+    if explicit_domain:
+        identifier = explicit_domain
+    else:
+        identifier = _company_identifier(topic)
+        if not _DOMAIN_RE.search(topic.lower()):
+            # No domain token in the topic: Trustpilot pages are keyed by
+            # domain, so resolve name -> domain before the info lookup.
+            identifier = _search_domain(topic) or identifier
     _log(f"info '{identifier}'")
     data = _run_cli(_build_info_args(identifier), timeout=SEARCH_TIMEOUT)
+    if ("error" in data or not data) and explicit_domain and domain_is_hint:
+        # The auto-resolved hint missed. Only user-set flags are
+        # verbatim-final; a hint falls through to the search resolution.
+        resolved = _search_domain(topic)
+        if resolved and resolved != identifier:
+            _log(f"hint '{identifier}' missed; retrying via search as '{resolved}'")
+            data = _run_cli(_build_info_args(resolved), timeout=SEARCH_TIMEOUT)
     if "error" in data or not data:
         return {"results": []}
     return {"results": [data]}

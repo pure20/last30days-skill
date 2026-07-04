@@ -382,6 +382,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Use web search to discover subreddits/handles before planning (for platforms without WebSearch)")
     parser.add_argument("--github-user", help="GitHub username for person-mode search (e.g., steipete)")
     parser.add_argument("--github-repo", help="Comma-separated owner/repo for project-mode search (e.g., openclaw/openclaw,paperclipai/paperclip)")
+    parser.add_argument("--trustpilot-domain", help="Trustpilot review-page domain for the topic (e.g., www.thriftbooks.com). Used verbatim and bypasses the brand-shape gate; find it with `trustpilot-pp-cli search '<name>'`.")
     parser.add_argument(
         "--competitors",
         nargs="?",
@@ -451,7 +452,7 @@ def parse_competitors_plan(raw: str | None) -> dict[str, dict]:
         raise SystemExit(2)
     known_fields = {
         "x_handle", "x_related", "subreddits",
-        "github_user", "github_repos", "context",
+        "github_user", "github_repos", "trustpilot_domain", "context",
     }
     normalized: dict[str, dict] = {}
     for entity, entry in parsed.items():
@@ -516,6 +517,15 @@ def subrun_kwargs_for(
     if isinstance(github_repos, list):
         github_repos = [r.strip() for r in github_repos if r.strip() and "/" in r.strip()] or None
 
+    trustpilot_domain = _choose("trustpilot_domain", "trustpilot_domain")
+    if isinstance(trustpilot_domain, str):
+        trustpilot_domain = trustpilot_domain.strip() or None
+    # Provenance: a plan-supplied domain is user-set (verbatim-final); one that
+    # only came from auto_resolve is a hint that retries via search on a miss.
+    trustpilot_domain_is_hint = bool(
+        trustpilot_domain and not plan_entry.get("trustpilot_domain")
+    )
+
     context = plan_entry.get("context") or resolved.get("context") or ""
 
     return {
@@ -524,6 +534,8 @@ def subrun_kwargs_for(
         "subreddits": subreddits,
         "github_user": github_user,
         "github_repos": github_repos,
+        "trustpilot_domain": trustpilot_domain,
+        "_trustpilot_domain_is_hint": trustpilot_domain_is_hint,
         "_context": context,
     }
 
@@ -1109,6 +1121,7 @@ def main() -> int:
         # This is the engine-side equivalent of SKILL.md Steps 0.55/0.75 for platforms
         # without WebSearch (OpenClaw, Codex, raw CLI).
         repos_from_auto_resolve = False
+        trustpilot_domain_is_hint = False
         if args.auto_resolve and not external_plan:
             from lib import resolve
             resolution = resolve.auto_resolve(topic, config)
@@ -1127,6 +1140,12 @@ def main() -> int:
                 # mark so we don't re-canonicalize below and clobber its relevance order.
                 repos_from_auto_resolve = True
                 sys.stderr.write(f"[AutoResolve] GitHub repos: {args.github_repo}\n")
+            if resolution.get("trustpilot_domain") and not args.trustpilot_domain:
+                # Hint provenance matters: only user-set flags are verbatim-final;
+                # a resolved hint retries via the CLI search when it misses.
+                args.trustpilot_domain = resolution["trustpilot_domain"]
+                trustpilot_domain_is_hint = True
+                sys.stderr.write(f"[AutoResolve] Trustpilot domain: {args.trustpilot_domain} (hint)\n")
             if resolution.get("context"):
                 # Inject context into external_plan metadata for the planner to use
                 if not external_plan:
@@ -1137,6 +1156,7 @@ def main() -> int:
 
         github_user = args.github_user.lstrip("@").lower() if args.github_user else None
         github_repos = [r.strip() for r in args.github_repo.split(",") if r.strip() and "/" in r.strip()] if args.github_repo else None
+        trustpilot_domain = args.trustpilot_domain.strip() if args.trustpilot_domain else None
 
         # Only canonicalize when repos came from a user-supplied --github-repo flag.
         # When repos_from_auto_resolve is True, auto_resolve already ran
@@ -1220,6 +1240,8 @@ def main() -> int:
                 as_of_date=args.as_of_date,
                 github_user=github_user,
                 github_repos=github_repos,
+                trustpilot_domain=trustpilot_domain,
+                trustpilot_domain_is_hint=trustpilot_domain_is_hint,
                 internal_subrun=comp_enabled,
                 hiring_signals_mode=args.hiring_signals,
             )
@@ -1229,6 +1251,7 @@ def main() -> int:
                 "subreddits": list(subreddits or []),
                 "github_user": (github_user or ""),
                 "github_repos": list(github_repos or []),
+                "trustpilot_domain": (trustpilot_domain or ""),
                 "context": config.get("_auto_resolve_context", "") or "",
             }
             return r
@@ -1290,6 +1313,7 @@ def main() -> int:
                     "subreddits": [],
                     "github_user": "",
                     "github_repos": [],
+                    "trustpilot_domain": "",
                     "context": "",
                 }
                 # Skip engine-internal auto_resolve when the hosting model
@@ -1316,6 +1340,7 @@ def main() -> int:
                     resolved["subreddits"] = list(r.get("subreddits") or [])
                     resolved["github_user"] = r.get("github_user", "") or ""
                     resolved["github_repos"] = list(r.get("github_repos") or [])
+                    resolved["trustpilot_domain"] = r.get("trustpilot_domain", "") or ""
                     resolved["context"] = r.get("context", "") or ""
                 kwargs = subrun_kwargs_for(entity, plan_entry, resolved=resolved)
                 # Record effective per-entity targeting for the Resolved block.
@@ -1325,6 +1350,7 @@ def main() -> int:
                     "subreddits": kwargs["subreddits"] or [],
                     "github_user": kwargs["github_user"] or "",
                     "github_repos": kwargs["github_repos"] or [],
+                    "trustpilot_domain": kwargs["trustpilot_domain"] or "",
                     "context": kwargs["_context"],
                 }
                 if kwargs["_context"]:
@@ -1347,6 +1373,8 @@ def main() -> int:
                     subreddits=kwargs["subreddits"],
                     github_user=kwargs["github_user"],
                     github_repos=kwargs["github_repos"],
+                    trustpilot_domain=kwargs["trustpilot_domain"],
+                    trustpilot_domain_is_hint=kwargs["_trustpilot_domain_is_hint"],
                     web_backend=args.web_backend,
                     lookback_days=args.lookback_days,
                     as_of_date=args.as_of_date,

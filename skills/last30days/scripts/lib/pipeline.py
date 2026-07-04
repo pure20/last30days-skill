@@ -72,7 +72,10 @@ SEARCH_ALIAS = {
     "xquik": "x",  # xquik is a backend of the single "x" source, not its own source
 }
 
-MAX_SOURCE_FETCHES: dict[str, int] = {"x": 2, "jobs": 1, "linkedin": 1, "stocktwits": 1}
+# trustpilot is capped at 1: every subquery would use the identical company
+# identifier, so N streams are pure redundancy -- and each extra stream risks
+# its own WAF-cookie Chrome harvest.
+MAX_SOURCE_FETCHES: dict[str, int] = {"x": 2, "jobs": 1, "linkedin": 1, "stocktwits": 1, "trustpilot": 1}
 
 # Per-handle result caps for the X handle-search lanes. The FROM lane (the
 # subject's own timeline) is the single best source for a person topic, so it
@@ -331,6 +334,8 @@ def run(
     as_of_date: str | None = None,
     github_user: str | None = None,
     github_repos: list[str] | None = None,
+    trustpilot_domain: str | None = None,
+    trustpilot_domain_is_hint: bool = False,
     hiring_signals_mode: bool = False,
     internal_subrun: bool = False,
 ) -> schema.Report:
@@ -483,6 +488,18 @@ def run(
         except Exception as exc:
             bundle.errors_by_source["github"] = f"Person-mode failed: {exc}"
 
+    # Trustpilot session pre-flight: one serialized WAF-session check before
+    # the fan-out, so parallel streams (and concurrent vs-mode sub-runs) never
+    # race their own Chrome harvests. No-op on non-brand topics and when the
+    # browser opt-out is set; the helper never raises.
+    if "trustpilot" in available and not mock:
+        try:
+            trustpilot.ensure_session_ready(
+                topic, config=config, has_domain=bool(trustpilot_domain)
+            )
+        except Exception as exc:  # pragma: no cover - defensive belt
+            bundle.errors_by_source.setdefault("trustpilot", f"warm-up failed: {exc}")
+
     # Thread-safe set prevents redundant fetches after a source returns 429
     rate_limited_sources: set[str] = set()
     rate_limit_lock = threading.Lock()
@@ -531,6 +548,8 @@ def run(
                         tiktok_hashtags=tiktok_hashtags,
                         tiktok_creators=tiktok_creators,
                         ig_creators=ig_creators,
+                        trustpilot_domain=trustpilot_domain,
+                        trustpilot_domain_is_hint=trustpilot_domain_is_hint,
                     )
                 ] = (subquery, source)
 
@@ -1260,6 +1279,8 @@ def _retrieve_stream(
     tiktok_hashtags: list[str] | None = None,
     tiktok_creators: list[str] | None = None,
     ig_creators: list[str] | None = None,
+    trustpilot_domain: str | None = None,
+    trustpilot_domain_is_hint: bool = False,
 ) -> tuple[list[dict], dict]:
     # Early exit if source was rate-limited by a sibling future
     if rate_limited_sources is not None and source in rate_limited_sources:
@@ -1512,7 +1533,9 @@ def _retrieve_stream(
         # per-subquery search_query, so the company is detected consistently.
         relevance_topic = raw_topic or topic or subquery.search_query
         result = trustpilot.search_trustpilot(
-            relevance_topic, from_date, to_date, depth=depth, config=config
+            relevance_topic, from_date, to_date, depth=depth, config=config,
+            explicit_domain=trustpilot_domain,
+            domain_is_hint=trustpilot_domain_is_hint,
         )
         return trustpilot.parse_trustpilot_response(result, query=relevance_topic), {}
     if source == "bluesky":
