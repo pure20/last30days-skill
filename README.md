@@ -1,11 +1,13 @@
 # /last30days
 
 <p align="center">
+  <img src="media/pr-assets/last30days-ad.gif" width="720" alt="last30days - an AI agent-led search engine that searches people, not editors" />
+</p>
+
+<p align="center">
   <a href="https://github.com/mvanhorn/last30days-skill">
     <img src="https://img.shields.io/badge/%231-Repository%20Of%20The%20Day-6f42c1?style=for-the-badge&logo=github&label=GITHUB%20TRENDING" alt="GitHub Trending #1 Repository Of The Day" />
   </a>
-  <br/>
-  <img src="https://img.shields.io/badge/coverage-%E2%89%A560%25-brightgreen" alt="Coverage ≥60%" />
   <br/>
   <a href="https://trendshift.io/repositories/21997" target="_blank">
     <img src="https://trendshift.io/api/badge/repositories/21997" alt="mvanhorn/last30days-skill | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/>
