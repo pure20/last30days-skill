@@ -376,6 +376,12 @@ def run(
         runtime = providers.mock_runtime(config, depth)
         reasoning_provider = None
         available = list(requested_sources or MOCK_AVAILABLE_SOURCES)
+        # Mock must honor EXCLUDE_SOURCES too (the live path applies it in
+        # available_sources(); mock hardcodes its list and skipped it, so a
+        # --mock run diverged from production). fork pure20
+        _mock_excluded = {s.strip().lower() for s in (config.get("EXCLUDE_SOURCES") or "").split(",") if s.strip()}
+        if _mock_excluded:
+            available = [s for s in available if s not in _mock_excluded]
         if not requested_sources and not hiring_signals_mode and not _company_topic_likely(topic):
             available = [source for source in available if source != "jobs"]
     else:
@@ -387,7 +393,16 @@ def run(
         available = [s for s in available if s != "grounding"]
     elif web_backend in ("brave", "exa", "serper", "parallel", "keyless") and "grounding" not in available:
         available.append("grounding")
-    if (hiring_signals_mode or _company_topic_likely(topic)) and "jobs" not in available:
+    # An explicit EXCLUDE_SOURCES must beat the company-topic heuristic: without
+    # this guard, a company-like topic (e.g. a competitor name) re-adds "jobs"
+    # even when the operator excluded it. hiring_signals_mode is a deliberate
+    # opt-in and still wins. (fork pure20)
+    _excluded = {s.strip().lower() for s in (config.get("EXCLUDE_SOURCES") or "").split(",") if s.strip()}
+    if (
+        (hiring_signals_mode or _company_topic_likely(topic))
+        and "jobs" not in available
+        and (hiring_signals_mode or "jobs" not in _excluded)
+    ):
         available.append("jobs")
     if hiring_signals_mode:
         config = dict(config)

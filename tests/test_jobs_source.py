@@ -2,6 +2,30 @@ import unittest
 from unittest.mock import patch
 
 from lib import jobs
+from lib import pipeline
+
+
+class ExcludeJobsRegressionTests(unittest.TestCase):
+    """fork pure20: EXCLUDE_SOURCES=jobs must beat the company-topic auto-add.
+
+    Before the fix, a company-like topic re-added "jobs" at pipeline.py:390
+    even when the operator excluded it — so competitor names kept pulling
+    hiring listings. 'Housecall Pro' is company-like (capitalized, <=4 words).
+    """
+
+    def _run(self, config):
+        return pipeline.run(topic="Housecall Pro", config=config,
+                            depth="quick", mock=True)
+
+    def test_company_topic_pulls_jobs_by_default(self):
+        # Control: without the exclude, the heuristic adds jobs.
+        report = self._run({"LAST30DAYS_REASONING_PROVIDER": "gemini"})
+        self.assertIn("jobs", report.items_by_source)
+
+    def test_exclude_sources_jobs_beats_company_heuristic(self):
+        report = self._run({"LAST30DAYS_REASONING_PROVIDER": "gemini",
+                            "EXCLUDE_SOURCES": "jobs"})
+        self.assertNotIn("jobs", report.items_by_source)
 
 
 class JobsSourceTests(unittest.TestCase):
