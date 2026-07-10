@@ -24,6 +24,13 @@ def publish_html(
     timeout: int = 30,
 ) -> dict[str, Any]:
     """Publish a single HTML document and return the provider response."""
+    # FORK HARDENING (pure20): hosted publishing is disabled in this fork.
+    # Research briefs must never be uploaded to a third-party host
+    # (api.ht-ml.app). Save locally with --emit=html instead.
+    raise HtmlPublishError(
+        "hosted HTML publishing is disabled in this fork (pure20/last30days-skill); "
+        "use --emit=html to save the brief locally"
+    )
     if not html_content.strip():
         raise HtmlPublishError("HTML content is empty")
 

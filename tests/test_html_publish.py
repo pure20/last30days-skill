@@ -76,6 +76,18 @@ class _FakeResponse:
         return json.dumps(self.payload).encode("utf-8")
 
 
+class ForkPublishDisabledTests(unittest.TestCase):
+    """FORK HARDENING (pure20): hosted publishing is disabled in this fork."""
+
+    def test_publish_is_disabled_in_fork(self):
+        def opener(_request, timeout):  # pragma: no cover - must never be reached
+            raise AssertionError("network opener must not be invoked when publish is disabled")
+
+        with self.assertRaisesRegex(html_publish.HtmlPublishError, "disabled in this fork"):
+            html_publish.publish_html("<html>ok</html>", opener=opener)
+
+
+@unittest.skip("FORK HARDENING (pure20): hosted publishing disabled; upstream behavior tests skipped")
 class HtmlPublishModuleTests(unittest.TestCase):
     def test_publish_posts_html_and_password(self):
         captured = {}
