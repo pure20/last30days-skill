@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -183,7 +184,14 @@ def _run_topic(topic: dict) -> dict:
                 "--emit=json",
                 "--quick",
                 "--lookback-days",
-                "90",
+                # FORK (pure20): overridable for high-frequency cron hosts. A
+                # daily runner doesn't need a 90-day window — findings are
+                # URL-deduped in the store, so a short window (e.g. 3) keeps
+                # runs fast while first_seen still captures "new since last
+                # run". Invalid/empty values fall back to upstream's 90.
+                (os.environ.get("LAST30DAYS_LOOKBACK_DAYS") or "90")
+                if (os.environ.get("LAST30DAYS_LOOKBACK_DAYS") or "90").isdigit()
+                else "90",
                 # Watchlist is an unattended cron host: never probe browser
                 # cookies (matches the MCP server). Avoids a silent Chromium
                 # read / unattended macOS Keychain prompt when a user has set
